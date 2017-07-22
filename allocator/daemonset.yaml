@@ -10,7 +10,7 @@ spec:
         name: hugepages-allocator
     spec:
       containers:
-      - image: derekwaynecarr/hugepages-allocator
+      - image: derekwaynecarr/hugepages-allocator:v0.1
         command: ["/bin/sh", "-c"]
         args: ["usr/bin/hugepages-allocator.sh && sleep infinity"]
         env:

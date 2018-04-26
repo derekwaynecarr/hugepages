@@ -1,18 +1,69 @@
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: DaemonSet
 metadata:
     name: hugepages-allocator
     namespace: kube-system
+    labels:
+      k8s-app: hugepages-allocator
 spec:
+  selector:
+    matchLabels:
+      name: hugepages-allocator      
   template:
     metadata:
       labels:
         name: hugepages-allocator
     spec:
+      nodeSelector:
+        hugepages: allocate
+      hostPID: true
       containers:
-      - image: derekwaynecarr/hugepages-allocator:v0.1
-        command: ["/bin/sh", "-c"]
-        args: ["usr/bin/hugepages-allocator.sh && sleep infinity"]
+      - command:
+        - /bin/bash
+        - -c
+        - |
+            #!/bin/bash
+            # The script must be run as a root.
+            # Input:
+            #
+            # Environment Variables
+            # NR_HUGEPAGES - Number of 2MB huge pages to allocate on the machine.  Defaults to 0
+            #            
+            set -o errexit
+            set -u
+            set -x
+
+            # do nothing if already set
+            nr_huge_pages=$(cat /proc/sys/vm/nr_hugepages)
+            if [ "$NR_HUGEPAGES" -eq "$nr_huge_pages" ]
+            then
+              echo "huge pages allocated."
+              sleep infinity
+            fi
+
+            # set the right amount
+            NR_HUGEPAGES=${NR_HUGEPAGES:-"0"}
+            echo "$NR_HUGEPAGES" > /proc/sys/vm/nr_hugepages
+            
+            # verify
+            nr_huge_pages=$(cat /proc/sys/vm/nr_hugepages)
+            if [ "$NR_HUGEPAGES" -eq "$nr_huge_pages" ]
+            then
+              echo "huge pages allocated."
+            else
+              echo "huge pages not allocated."
+              exit 1        
+            fi    
+         
+            # restart kubelet
+            echo "Sending SIGTERM to hyperkube kubelet"
+            if ! pgrep -U 0 -f 'hyperkube kubelet ' | xargs kill; then
+              echo "unable to restart kubelet"
+              exit 1
+            fi
+            echo "Done"
+        image: docker.io/openshift/origin-node:v3.10.0
+        imagePullPolicy: IfNotPresent
         env:
           - name: NR_HUGEPAGES
             value: "512"
@@ -22,3 +73,4 @@ spec:
             cpu: 0.15
         securityContext:
           privileged: true
+          runAsUser: 0
